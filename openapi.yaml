@@ -1,0 +1,871 @@
+openapi: 3.1.0
+info:
+  title: AISensorEdgeComp API
+  version: 0.1.0
+  description: |
+    The AISensorEdgeComp REST API — planetary-scale IoT + edge AI platform.
+
+    ## Authentication
+    All write endpoints require a JWT bearer token obtained via `/api/v1/auth/login`.
+    Read endpoints are rate-limited per IP (1000 req/min default).
+
+    ## Rate Limiting
+    - Anonymous: 100 req/min per IP
+    - Authenticated: 1000 req/min per token
+    - Design partner: 10,000 req/min per token
+
+    ## Versioning
+    API version is in the URL path (`/api/v1/`). Breaking changes require a new
+    version (`/api/v2/`). Backward-compatible changes are additive only.
+
+    ## Schemas
+    All schemas match the Avro definitions in `schemas/avro/` and Protobuf
+    definitions in `schemas/proto/`. See [schemas/README.md](schemas/README.md).
+
+  contact:
+    name: AISensorEdgeComp API Support
+    email: platform@aisensoredgecomp.ai
+    url: https://testdemoqwenai2025-creator.github.io/DemoSentinelEdge/
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.aisensoredgecomp.ai
+    description: Production
+  - url: https://staging-api.aisensoredgecomp.ai
+    description: Staging
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Authentication and session management
+  - name: Sensors
+    description: Sensor registry and live readings
+  - name: Alerts
+    description: Active and historical alerts
+  - name: Assets
+    description: Asset registry (compressors, lines, fields, etc.)
+  - name: Maintenance
+    description: Maintenance event log and scheduling
+  - name: ML
+    description: ML inference — anomaly detection, RUL prediction
+  - name: Search
+    description: Natural-language query (LLM-powered, with citations)
+  - name: Health
+    description: Service health and observability
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      description: Returns service health status. No authentication required.
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in and obtain JWT
+      description: Authenticate with email + password, receive a JWT bearer token valid for 24 hours.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/sensors:
+    get:
+      tags: [Sensors]
+      summary: List sensors
+      description: Returns the sensor registry with current state per sensor.
+      parameters:
+        - $ref: '#/components/parameters/SensorKindFilter'
+        - $ref: '#/components/parameters/StatusFilter'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of sensors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sensors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Sensor'
+                  count:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+
+  /api/v1/sensors/{sensor_id}:
+    get:
+      tags: [Sensors]
+      summary: Get sensor metadata
+      parameters:
+        - $ref: '#/components/parameters/SensorIdPath'
+      responses:
+        '200':
+          description: Sensor metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sensor'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/sensors/{sensor_id}/readings:
+    get:
+      tags: [Sensors]
+      summary: Get sensor readings
+      description: Returns raw telemetry readings for a sensor. Query by time range, with pagination.
+      parameters:
+        - $ref: '#/components/parameters/SensorIdPath'
+        - name: since
+          in: query
+          description: Epoch nanoseconds — return readings with `timestamp_ns` >= this value
+          schema:
+            type: integer
+            format: int64
+        - name: until
+          in: query
+          description: Epoch nanoseconds — return readings with `timestamp_ns` < this value
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          description: Max readings to return (default 1000, max 10000)
+          schema:
+            type: integer
+            default: 1000
+            maximum: 10000
+      responses:
+        '200':
+          description: Sensor readings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sensor_id:
+                    type: string
+                  readings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Telemetry'
+                  count:
+                    type: integer
+                  next_cursor:
+                    type: integer
+                    format: int64
+                    nullable: true
+
+  /api/v1/sensors/{sensor_id}/stats:
+    get:
+      tags: [Sensors]
+      summary: Get sensor statistics
+      description: Returns aggregated statistics (min, max, mean, std, anomaly count) for a time range.
+      parameters:
+        - $ref: '#/components/parameters/SensorIdPath'
+        - name: window
+          in: query
+          description: Aggregation window (1m, 5m, 1h, 1d)
+          schema:
+            type: string
+            enum: [1m, 5m, 1h, 1d]
+            default: 1h
+        - name: since
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: until
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Aggregated stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sensor_id:
+                    type: string
+                  buckets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SensorStat'
+
+  /api/v1/alerts:
+    get:
+      tags: [Alerts]
+      summary: List alerts
+      description: Returns recent alerts, optionally filtered by severity or asset.
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [info, warning, critical, emergency]
+        - name: asset_id
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+                  count:
+                    type: integer
+
+  /api/v1/alerts/{alert_id}:
+    get:
+      tags: [Alerts]
+      summary: Get alert details with evidence chain
+      parameters:
+        - name: alert_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Alert with full evidence chain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/assets:
+    get:
+      tags: [Assets]
+      summary: List assets
+      parameters:
+        - name: asset_type
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Asset'
+                  count:
+                    type: integer
+
+  /api/v1/assets/{asset_id}:
+    get:
+      tags: [Assets]
+      summary: Get asset details
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Asset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+
+  /api/v1/assets/{asset_id}/rul:
+    get:
+      tags: [ML]
+      summary: Get remaining-useful-life prediction
+      description: Returns the TS-FM-based RUL prediction for an asset, updated daily.
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: RUL prediction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RULPrediction'
+
+  /api/v1/maintenance:
+    get:
+      tags: [Maintenance]
+      summary: List maintenance events
+      parameters:
+        - name: asset_id
+          in: query
+          schema:
+            type: string
+        - name: event_type
+          in: query
+          schema:
+            type: string
+            enum: [inspection, repair, replacement, calibration, fault]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of maintenance events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MaintenanceEvent'
+                  count:
+                    type: integer
+
+  /api/v1/ml/infer/anomaly:
+    post:
+      tags: [ML]
+      summary: Run TS-FM anomaly detection on a window
+      description: Submits a window of sensor readings for TS-FM anomaly detection. Returns anomaly score and confidence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferenceRequest'
+      responses:
+        '200':
+          description: Inference result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyInferenceResponse'
+
+  /api/v1/ml/infer/rul:
+    post:
+      tags: [ML]
+      summary: Predict remaining useful life for an asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RULRequest'
+      responses:
+        '200':
+          description: RUL prediction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RULPrediction'
+
+  /api/v1/search:
+    post:
+      tags: [Search]
+      summary: Natural-language query (LLM-powered)
+      description: |
+        Ask a natural-language question about the platform. Returns a grounded
+        answer with citation chain. Powered by z-ai-web-dev-sdk on the backend.
+
+        Example queries:
+        - "What is your TAM and how is it calculated?"
+        - "How does the edge-cloud workload placement work?"
+        - "Which verticals are you going after first and why?"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                  description: Natural-language query
+      responses:
+        '200':
+          description: Grounded answer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  answer:
+                    type: string
+                  citations:
+                    type: array
+                    items:
+                      type: string
+                  confidence:
+                    type: number
+                    format: float
+                  timestamp:
+                    type: integer
+                    format: int64
+                  grounded:
+                    type: boolean
+                    description: True if LLM responded (vs. fallback rule-based answer)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SensorIdPath:
+      name: sensor_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Stable sensor identifier (e.g., vib_a3_l3_compressor_a_bearing1)
+    SensorKindFilter:
+      name: sensor_kind
+      in: query
+      schema:
+        type: string
+        enum: [vibration, temperature, pressure, flow, level, gas, acoustic, flame, corrosion, valve_position, power, environmental]
+    StatusFilter:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [nominal, warning, critical, offline]
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 100
+        maximum: 1000
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+        service:
+          type: string
+        version:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+
+    LoginResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        token:
+          type: string
+          description: JWT bearer token
+        user:
+          type: object
+          properties:
+            email:
+              type: string
+            name:
+              type: string
+            role:
+              type: string
+              enum: [design_partner, customer, admin]
+        expires_in_hours:
+          type: integer
+          default: 24
+
+    Sensor:
+      type: object
+      properties:
+        sensor_id:
+          type: string
+        sensor_kind:
+          type: string
+          enum: [vibration, temperature, pressure, flow, level, gas, acoustic, flame, corrosion, valve_position, power, environmental]
+        physical_quantity:
+          type: string
+        unit:
+          type: string
+        sample_rate_hz:
+          type: number
+        edge_device:
+          type: string
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+            lon:
+              type: number
+            elevation_m:
+              type: number
+              nullable: true
+        status:
+          type: string
+          enum: [nominal, warning, critical, offline]
+        ts_fm_confidence:
+          type: number
+          format: float
+        last_reading_at:
+          type: integer
+          format: int64
+        calibration_confidence:
+          type: number
+          format: float
+
+    Telemetry:
+      type: object
+      description: Canonical measurement record (matches schemas/avro/telemetry.avsc)
+      properties:
+        measurement_id:
+          type: string
+        sensor_id:
+          type: string
+        sensor_kind:
+          type: string
+        physical_quantity:
+          type: string
+        unit:
+          type: string
+        value:
+          type: number
+        uncertainty:
+          type: number
+        timestamp_ns:
+          type: integer
+          format: int64
+        sample_rate_hz:
+          type: number
+        location:
+          $ref: '#/components/schemas/GeoLocation'
+        lineage:
+          $ref: '#/components/schemas/Lineage'
+        calibration_confidence:
+          type: number
+
+    GeoLocation:
+      type: object
+      nullable: true
+      properties:
+        lat:
+          type: number
+        lon:
+          type: number
+        elevation_m:
+          type: number
+          nullable: true
+
+    Lineage:
+      type: object
+      properties:
+        ingest_protocol:
+          type: string
+          enum: [mqtt, opcua, modbus, coap, profinet, ethercat, lorawan, nbiot, stac, http]
+        source_node_id:
+          type: string
+        ingest_ts:
+          type: integer
+          format: int64
+        calibration_age_days:
+          type: integer
+
+    SensorStat:
+      type: object
+      properties:
+        bucket:
+          type: string
+          format: date-time
+        avg_value:
+          type: number
+        min_value:
+          type: number
+        max_value:
+          type: number
+        sample_count:
+          type: integer
+        anomaly_count:
+          type: integer
+        avg_confidence:
+          type: number
+
+    Alert:
+      type: object
+      properties:
+        alert_id:
+          type: string
+        sensor_id:
+          type: string
+          nullable: true
+        asset_id:
+          type: string
+          nullable: true
+        severity:
+          type: string
+          enum: [info, warning, critical, emergency]
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        evidence:
+          type: object
+          properties:
+            anomaly_score:
+              type: number
+            ts_fm_confidence:
+              type: number
+            causal_test_result:
+              type: string
+              nullable: true
+            citation_chain:
+              type: array
+              items:
+                type: string
+        triggered_at:
+          type: integer
+          format: int64
+        acknowledged_at:
+          type: integer
+          format: int64
+          nullable: true
+        resolved_at:
+          type: integer
+          format: int64
+          nullable: true
+
+    Asset:
+      type: object
+      properties:
+        asset_id:
+          type: string
+        asset_type:
+          type: string
+          description: e.g., compressor, line, field, vessel, wellhead
+        description:
+          type: string
+          nullable: true
+        parent_id:
+          type: string
+          nullable: true
+        location:
+          $ref: '#/components/schemas/GeoLocation'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    MaintenanceEvent:
+      type: object
+      properties:
+        event_id:
+          type: string
+        asset_id:
+          type: string
+        event_type:
+          type: string
+          enum: [inspection, repair, replacement, calibration, fault]
+        description:
+          type: string
+          nullable: true
+        performed_by:
+          type: string
+          nullable: true
+        cost_usd:
+          type: number
+          nullable: true
+        started_at:
+          type: integer
+          format: int64
+        completed_at:
+          type: integer
+          format: int64
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    InferenceRequest:
+      type: object
+      required: [sensor_id, window, sensor_kind]
+      properties:
+        sensor_id:
+          type: string
+        window:
+          type: array
+          items:
+            type: number
+          description: Last N samples (tokenized for TS-FM)
+        sensor_kind:
+          type: string
+
+    AnomalyInferenceResponse:
+      type: object
+      properties:
+        sensor_id:
+          type: string
+        anomaly_score:
+          type: number
+          description: 0.0-1.0
+        confidence:
+          type: number
+          description: 0.0-1.0
+        model_version:
+          type: string
+          example: ts-fm-v1
+        inference_at:
+          type: string
+          enum: [edge, cloud]
+
+    RULRequest:
+      type: object
+      required: [asset_id]
+      properties:
+        asset_id:
+          type: string
+        window_days:
+          type: integer
+          default: 7
+          description: Number of days of recent sensor data to use
+
+    RULPrediction:
+      type: object
+      properties:
+        asset_id:
+          type: string
+        rul_hours:
+          type: number
+          description: Predicted remaining useful life in hours
+        confidence:
+          type: number
+        model_version:
+          type: string
+          example: rul-v1
+        predicted_at:
+          type: integer
+          format: int64
+        features:
+          type: array
+          items:
+            type: string
+          description: Features used in the prediction
