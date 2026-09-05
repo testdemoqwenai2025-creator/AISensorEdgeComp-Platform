@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package aisensoredgecomp.v1;
+
+option java_package = "com.aisensoredgecomp.v1.proto";
+
+message MaintenanceEvent {
+  string event_id = 1;
+  string asset_id = 2;
+  EventType event_type = 3;
+  optional string description = 4;
+  optional string performed_by = 5;
+  optional double cost_usd = 6;
+  int64 started_at = 7;
+  optional int64 completed_at = 8;
+  map<string, string> metadata = 9;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  INSPECTION = 1;
+  REPAIR = 2;
+  REPLACEMENT = 3;
+  CALIBRATION = 4;
+  FAULT = 5;
+}

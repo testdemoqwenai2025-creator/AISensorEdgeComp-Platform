@@ -1,0 +1,48 @@
+# Production overrides
+
+global:
+  imagePullPolicy: IfNotPresent
+  namespace: production
+
+ingest:
+  replicas: 12
+  resources:
+    requests: { memory: 512Mi, cpu: 500m }
+    limits:   { memory: 1Gi, cpu: 1 }
+
+api:
+  replicas: 8
+  ingress:
+    host: api.aisensoredgecomp.ai
+    tls: true
+  resources:
+    requests: { memory: 1Gi, cpu: 1 }
+    limits:   { memory: 2Gi, cpu: 2 }
+
+ml:
+  replicas: 4
+  device: cuda
+  resources:
+    requests: { memory: 4Gi, cpu: 2, nvidia.com/gpu: 1 }
+    limits:   { memory: 8Gi, cpu: 4, nvidia.com/gpu: 1 }
+
+kafka:
+  replicas: 5
+  storage: 1Ti
+  partitions: 24
+
+flink:
+  taskManagerReplicas: 8
+  parallelism: 24
+
+timescale:
+  storage: 1Ti
+
+clickhouse:
+  storage: 5Ti
+
+monitoring:
+  prometheus: true
+  grafana: true
+  loki: true
+  alertmanager: true

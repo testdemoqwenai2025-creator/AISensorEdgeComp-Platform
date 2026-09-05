@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package aisensoredgecomp.v1;
+
+import "telemetry.proto";
+
+option java_package = "com.aisensoredgecomp.v1.proto";
+
+message Alert {
+  string alert_id = 1;
+  string sensor_id = 2;
+  optional string asset_id = 3;
+  Severity severity = 4;
+  string title = 5;
+  optional string description = 6;
+  Evidence evidence = 7;
+  int64 triggered_at = 8;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  INFO = 1;
+  WARNING = 2;
+  CRITICAL = 3;
+  EMERGENCY = 4;
+}
+
+message Evidence {
+  double anomaly_score = 1;
+  double ts_fm_confidence = 2;
+  optional string causal_test_result = 3;
+  repeated string citation_chain = 4;
+}

@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package aisensoredgecomp.v1;
+
+option java_package = "com.aisensoredgecomp.v1.proto";
+option java_multiple_files = true;
+
+// Canonical telemetry measurement — wire format for gRPC + storage.
+message Telemetry {
+  string measurement_id = 1;
+  string sensor_id = 2;
+  SensorKind sensor_kind = 3;
+  string physical_quantity = 4;
+  string unit = 5;
+  double value = 6;
+  double uncertainty = 7;
+  int64 timestamp_ns = 8;
+  double sample_rate_hz = 9;
+  GeoLocation location = 10;
+  Lineage lineage = 11;
+  double calibration_confidence = 12;
+}
+
+enum SensorKind {
+  SENSOR_KIND_UNSPECIFIED = 0;
+  VIBRATION = 1;
+  TEMPERATURE = 2;
+  PRESSURE = 3;
+  FLOW = 4;
+  GAS = 5;
+  HUMIDITY = 6;
+  VISION = 7;
+  HYPERSPECTRAL = 8;
+  MMWAVE = 9;
+  SOIL = 10;
+  WEATHER = 11;
+  AIS = 12;
+  EARTH_OBSERVATION = 13;
+}
+
+message GeoLocation {
+  double lat = 1;
+  double lon = 2;
+  optional double elevation_m = 3;
+}
+
+message Lineage {
+  IngestProtocol ingest_protocol = 1;
+  string source_node_id = 2;
+  int64 ingest_ts = 3;
+  int32 calibration_age_days = 4;
+}
+
+enum IngestProtocol {
+  INGEST_PROTOCOL_UNSPECIFIED = 0;
+  MQTT = 1;
+  OPC_UA = 2;
+  MODBUS = 3;
+  COAP = 4;
+  PROFINET = 5;
+  ETHERCAT = 6;
+  LORAWAN = 7;
+  NB_IOT = 8;
+  STAC = 9;
+  HTTP = 10;
+}

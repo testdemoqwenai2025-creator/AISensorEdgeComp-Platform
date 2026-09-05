@@ -1,0 +1,31 @@
+[project]
+name = "aisensoredgecomp-ingest"
+version = "0.1.0"
+description = "AISensorEdgeComp ingest service: MQTT subscriber + Kafka producer + FastAPI health"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "paho-mqtt>=2.1",
+    "aiokafka>=0.12",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "confluent-kafka>=2.6",
+    "avro>=1.12",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp>=1.27",
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
+]
+
+[project.scripts]
+asec-ingest = "services.ingest.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["services*"]

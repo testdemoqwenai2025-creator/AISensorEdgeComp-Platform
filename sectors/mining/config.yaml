@@ -1,0 +1,38 @@
+# Sector: Mining
+# Override base platform config with sector-specific defaults
+
+sector:
+  id: mining
+  name: "Mining"
+  description: "Surface + underground + processing plant operations"
+
+sensors:
+  modalities: ['vibration', 'gas', 'temperature', 'pressure', 'vision']
+  calibration_interval_days:
+    vibration: 180
+    temperature: 365
+    pressure: 180
+    gas: 90
+    flow: 180
+    vision: null  # intrinsics only
+    mmwave: 365
+    soil: 30
+    weather: 365
+    chemical: 30
+
+edge:
+  default_silicon: "hailo-8"
+  inference_sla_ms: 100
+  wan_loss_autonomy_hours: 72
+
+compliance:
+  standards: ['MSHA 30 CFR', 'ISO 19434 (mine hazard classification)']
+  data_residency: "us"
+  audit_log: true
+  encryption_at_rest: true
+
+ml:
+  ts_fm_model: "ts-fm-v1-mining"
+  rul_models:
+    - asset_class: "pump"
+      fine_tune_data: "sector-specific labeled failures"

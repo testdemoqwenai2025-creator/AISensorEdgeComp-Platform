@@ -1,0 +1,63 @@
+# Default values (development).
+# For production, override with values-production.yaml.
+
+global:
+  imageRegistry: ghcr.io/testdemoqwenai2025-creator
+  imagePullPolicy: IfNotPresent
+  namespace: aisensoredgecomp
+
+ingest:
+  enabled: true
+  replicas: 2
+  image: aisensoredgecomp-ingest
+  tag: latest
+  resources:
+    requests: { memory: 256Mi, cpu: 200m }
+    limits:   { memory: 512Mi, cpu: 500m }
+
+api:
+  enabled: true
+  replicas: 2
+  image: aisensoredgecomp-api
+  tag: latest
+  ingress:
+    enabled: true
+    host: api.aisensoredgecomp.ai
+    tls: true
+
+ml:
+  enabled: true
+  replicas: 2
+  image: aisensoredgecomp-ml
+  tag: latest
+  device: cpu  # or cuda
+  modelS3Path: s3://aisensoredgecomp-models/ts-fm-v1.onnx
+
+kafka:
+  enabled: true
+  replicas: 3
+  storage: 100Gi
+  partitions: 12
+
+flink:
+  enabled: true
+  taskManagerReplicas: 2
+  parallelism: 8
+
+timescale:
+  enabled: true
+  storage: 100Gi
+
+clickhouse:
+  enabled: true
+  storage: 500Gi
+
+iceberg:
+  enabled: true
+  warehouse: s3://aisensoredgecomp-warehouse/
+  s3Endpoint: https://s3.amazonaws.com
+
+monitoring:
+  prometheus: true
+  grafana: true
+  loki: true

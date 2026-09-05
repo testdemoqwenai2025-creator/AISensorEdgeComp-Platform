@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "MaintenanceEvent",
+  "namespace": "com.aisensoredgecomp.v1",
+  "doc": "Maintenance event for an asset (inspection, repair, replacement, fault).",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "asset_id", "type": "string"},
+    {"name": "event_type", "type": {"type": "enum", "name": "EventType", "symbols": [
+      "inspection", "repair", "replacement", "calibration", "fault"
+    ]}},
+    {"name": "description", "type": ["null", "string"], "default": null},
+    {"name": "performed_by", "type": ["null", "string"], "default": null},
+    {"name": "cost_usd", "type": ["null", "double"], "default": null},
+    {"name": "started_at", "type": "long"},
+    {"name": "completed_at", "type": ["null", "long"], "default": null},
+    {"name": "metadata", "type": {"type": "map", "values": "string"}, "default": {}}
+  ]
+}

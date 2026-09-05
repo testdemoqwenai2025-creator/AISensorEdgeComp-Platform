@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+
+# Node
+node_modules/
+.npm/
+
+# Environment
+.env
+.env.local
+.env.*.local
+.z-ai-config
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+target/
+*.egg
+
+# Data (never commit)
+data/
+*.db
+*.sqlite
+*.parquet
+
+# Models (never commit large model files)
+*.onnx
+*.pt
+*.pth
+*.bin
+ml/models/
+!ml/models/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Kubernetes secrets
+k8s/**/secret*.yaml
+k8s/**/*-secret.yaml
+
+# Helm
+helm/charts/
+helm/*.tgz
+
+# Sandbox
+.zscripts/
+.venv/

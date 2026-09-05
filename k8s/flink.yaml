@@ -1,0 +1,46 @@
+# Flink Kubernetes Operator — production deploy
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: aisensoredgecomp-stream
+  namespace: aisensoredgecomp
+spec:
+  image: flink:1.19-scala_2.12-java17
+  flinkVersion: v1_19
+  flinkConfiguration:
+    state.backend: rocksdb
+    state.checkpoints.dir: s3://aisensoredgecomp-checkpoints/
+    execution.checkpointing.interval: 60s
+    execution.checkpointing.mode: EXACTLY_ONCE
+    restart-strategy: exponential-delay
+  serviceAccount: flink
+  jobManager:
+    resource:
+      memory: 2Gi
+      cpu: 1
+  taskManager:
+    replicas: 4
+    resource:
+      memory: 4Gi
+      cpu: 2
+  podTemplate:
+    spec:
+      containers:
+        - name: flink-main-container
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: iceberg-secrets
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: iceberg-secrets
+                  key: aws-secret-access-key
+  jobs:
+    - jarUri: local:///opt/flink/jobs/aisensoredgecomp-stream.jar
+      entryClass: com.aisensoredgecomp.stream.StreamJob
+      parallelism: 12
+      state: running
+      upgradeMode: savepoint

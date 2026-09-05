@@ -1,0 +1,19 @@
+apiVersion: v2
+name: aisensoredgecomp
+description: AISensorEdgeComp platform — planetary-scale IoT + edge AI
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+dependencies:
+  - name: strimzi-kafka-operator
+    version: 0.43.0
+    repository: https://strimzi.io/charts/
+    condition: kafka.enabled
+  - name: flink-kubernetes-operator
+    version: 1.9.0
+    repository: https://downloads.apache.org/flink/flink-kubernetes-operator-1.9.0/
+    condition: flink.enabled
+  - name: clickhouse
+    version: 0.4.0
+    repository: https://charts.bitnami.com/bitnami
+    condition: clickhouse.enabled

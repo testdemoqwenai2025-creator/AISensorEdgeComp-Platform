@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "Asset",
+  "namespace": "com.aisensoredgecomp.v1",
+  "doc": "Asset (compressor, line, field, vessel, etc.) in the asset graph.",
+  "fields": [
+    {"name": "asset_id", "type": "string"},
+    {"name": "asset_type", "type": "string", "doc": "e.g. compressor, line, field, vessel"},
+    {"name": "description", "type": ["null", "string"], "default": null},
+    {"name": "parent_id", "type": ["null", "string"], "default": null},
+    {"name": "location", "type": ["null", "com.aisensoredgecomp.v1.GeoLocation"], "default": null},
+    {"name": "metadata", "type": {"type": "map", "values": "string"}, "default": {}},
+    {"name": "created_at", "type": "long"},
+    {"name": "updated_at", "type": "long"}
+  ]
+}

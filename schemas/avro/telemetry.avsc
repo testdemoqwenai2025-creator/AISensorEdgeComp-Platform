@@ -1,0 +1,36 @@
+{
+  "type": "record",
+  "name": "Telemetry",
+  "namespace": "com.aisensoredgecomp.v1",
+  "doc": "Canonical telemetry measurement — the contract between ingest and downstream consumers.",
+  "fields": [
+    {"name": "measurement_id", "type": "string", "doc": "Globally unique ID (ULID)"},
+    {"name": "sensor_id", "type": "string", "doc": "Stable sensor identifier (e.g. plant_a_line3_compressor_a_vibration)"},
+    {"name": "sensor_kind", "type": {"type": "enum", "name": "SensorKind", "symbols": [
+      "vibration", "temperature", "pressure", "flow", "gas", "humidity",
+      "vision", "hyperspectral", "mmwave", "soil", "weather", "ais",
+      "earth_observation", "unknown"
+    ]}},
+    {"name": "physical_quantity", "type": "string", "doc": "e.g. compressor_outlet_pressure"},
+    {"name": "unit", "type": "string", "doc": "SI unit symbol, e.g. Pa, mm/s_RMS, degC"},
+    {"name": "value", "type": "double"},
+    {"name": "uncertainty", "type": "double", "default": 0.0, "doc": "± uncertainty at 1-sigma"},
+    {"name": "timestamp_ns", "type": "long", "doc": "Epoch nanoseconds when the measurement was taken"},
+    {"name": "sample_rate_hz", "type": "double", "default": 1.0},
+    {"name": "location", "type": ["null", {"type": "record", "name": "GeoLocation", "fields": [
+      {"name": "lat", "type": "double"},
+      {"name": "lon", "type": "double"},
+      {"name": "elevation_m", "type": ["null", "double"], "default": null}
+    ]}], "default": null},
+    {"name": "lineage", "type": {"type": "record", "name": "Lineage", "fields": [
+      {"name": "ingest_protocol", "type": {"type": "enum", "name": "IngestProtocol", "symbols": [
+        "mqtt", "opcua", "modbus", "coap", "profinet", "ethercat", "lorawan",
+        "nbiot", "stac", "http"
+      ]}},
+      {"name": "source_node_id", "type": "string"},
+      {"name": "ingest_ts", "type": "long", "doc": "Epoch nanoseconds when ingested"},
+      {"name": "calibration_age_days", "type": "int", "default": 0}
+    ]}},
+    {"name": "calibration_confidence", "type": "double", "default": 1.0, "doc": "0.0-1.0, output of self-calibration mesh"}
+  ]
+}

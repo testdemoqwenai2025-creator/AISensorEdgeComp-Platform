@@ -1,0 +1,21 @@
+[project]
+name = "aisensoredgecomp-ml"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "aiokafka>=0.12",
+    "numpy>=2.1",
+    "onnxruntime>=1.20",
+    "torch>=2.4",
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
+]
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["services*"]

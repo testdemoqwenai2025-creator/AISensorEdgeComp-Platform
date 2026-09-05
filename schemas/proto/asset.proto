@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package aisensoredgecomp.v1;
+
+import "telemetry.proto";
+
+option java_package = "com.aisensoredgecomp.v1.proto";
+
+message Asset {
+  string asset_id = 1;
+  string asset_type = 2;
+  optional string description = 3;
+  optional string parent_id = 4;
+  optional GeoLocation location = 5;
+  map<string, string> metadata = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}

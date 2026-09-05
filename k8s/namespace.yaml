@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aisensoredgecomp
+  labels:
+    app.kubernetes.io/name: aisensoredgecomp
+    app.kubernetes.io/part-of: aisensoredgecomp-platform

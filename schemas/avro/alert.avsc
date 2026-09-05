@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "Alert",
+  "namespace": "com.aisensoredgecomp.v1",
+  "doc": "Alert produced by the intelligence layer (TS-FM + Graph RAG + causal).",
+  "fields": [
+    {"name": "alert_id", "type": "string"},
+    {"name": "sensor_id", "type": "string"},
+    {"name": "asset_id", "type": ["null", "string"], "default": null},
+    {"name": "severity", "type": {"type": "enum", "name": "Severity", "symbols": [
+      "info", "warning", "critical", "emergency"
+    ]}},
+    {"name": "title", "type": "string"},
+    {"name": "description", "type": ["null", "string"], "default": null},
+    {"name": "evidence", "type": {"type": "record", "name": "Evidence", "fields": [
+      {"name": "anomaly_score", "type": "double"},
+      {"name": "ts_fm_confidence", "type": "double"},
+      {"name": "causal_test_result", "type": ["null", "string"], "default": null},
+      {"name": "citation_chain", "type": {"type": "array", "items": "string"}, "default": []}
+    ]}},
+    {"name": "triggered_at", "type": "long", "doc": "Epoch nanoseconds"}
+  ]
+}

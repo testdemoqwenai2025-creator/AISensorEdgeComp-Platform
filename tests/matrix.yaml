@@ -1,0 +1,1223 @@
+# =====================================================================
+# AISensorEdgeComp — Edge-Case Test Matrix (100+ scenarios)
+# =====================================================================
+# Each scenario specifies: input, expected output, severity if it fails.
+# Run via: pytest tests/test_matrix.py
+# =====================================================================
+
+scenarios:
+
+  # ─── Ingest: MQTT ──────────────────────────────────────────────────
+  - id: INGEST-001
+    name: Valid MQTT telemetry message normalizes to canonical schema
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/vibration"
+      payload: {"value": 4.5, "unit": "mm/s_RMS", "sample_rate_hz": 10000}
+    expected:
+      sensor_id: "plant_a_line3_compressor_a_vibration"
+      sensor_kind: "vibration"
+      unit: "mm/s_RMS"
+      value: 4.5
+    severity: critical
+
+  - id: INGEST-002
+    name: Invalid MQTT topic structure (too few parts) rejected
+    input:
+      topic: "aisensor/telemetry"
+      payload: {"value": 4.5, "unit": "mm/s_RMS"}
+    expected:
+      error: "Invalid topic structure"
+    severity: critical
+
+  - id: INGEST-003
+    name: Non-JSON payload rejected with clear error
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/vibration"
+      payload: "not-json{{"
+    expected:
+      error: "Payload is not valid JSON"
+    severity: critical
+
+  - id: INGEST-004
+    name: Missing required field "value" rejected
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/vibration"
+      payload: {"unit": "mm/s_RMS"}
+    expected:
+      error: "missing required fields"
+    severity: critical
+
+  - id: INGEST-005
+    name: Missing required field "unit" rejected
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/vibration"
+      payload: {"value": 4.5}
+    expected:
+      error: "missing required fields"
+    severity: critical
+
+  - id: INGEST-006
+    name: Default timestamp_ns uses current time when not provided
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/vibration"
+      payload: {"value": 4.5, "unit": "mm/s_RMS"}
+    expected:
+      timestamp_ns_within: "5s of now"
+    severity: warning
+
+  - id: INGEST-007
+    name: Default sample_rate_hz = 1.0 when not provided
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/vibration"
+      payload: {"value": 4.5, "unit": "mm/s_RMS"}
+    expected:
+      sample_rate_hz: 1.0
+    severity: warning
+
+  - id: INGEST-008
+    name: Sensor kind inferred from topic suffix
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/temperature"
+      payload: {"value": 72.5, "unit": "degC"}
+    expected:
+      sensor_kind: "temperature"
+    severity: warning
+
+  - id: INGEST-009
+    name: Unknown sensor kind defaults to "unknown"
+    input:
+      topic: "aisensor/telemetry/plant_a/line3/compressor_a/quantum_field"
+      payload: {"value": 1.0, "unit": "joules"}
+    expected:
+      sensor_kind: "unknown"
+    severity: info
+
+  - id: INGEST-010
+    name: MQTT broker disconnection triggers reconnect
+    input:
+      action: "stop mqtt container"
+    expected:
+      ingest_reconnects: true
+      ingest_logs: "mqtt.disconnected.unexpected"
+    severity: critical
+
+  - id: INGEST-011
+    name: Kafka producer retries on transient failure
+    input:
+      kafka_action: "stop kafka for 10s, then restart"
+    expected:
+      ingest_retries: ">= 3"
+      no_message_loss: true
+    severity: critical
+
+  - id: INGEST-012
+    name: Ingest service survives MQTT message flood (10k msg/s for 60s)
+    input:
+      rate_per_sec: 10000
+      duration_sec: 60
+    expected:
+      no_crash: true
+      no_message_loss: true
+      ingest_latency_p99_ms: "< 200"
+    severity: critical
+
+  - id: INGEST-013
+    name: Malformed MQTT topic with empty segments handled
+    input:
+      topic: "aisensor/telemetry//line3/compressor_a/vibration"
+      payload: {"value": 4.5, "unit": "mm/s_RMS"}
+    expected:
+      sensor_id_normalized: "line3_compressor_a_vibration"
+    severity: warning
+
+  - id: INGEST-014
+    name: Very large payload (1MB JSON) handled without OOM
+    input:
+      payload_size_bytes: 1048576
+    expected:
+      no_crash: true
+      ingest_latency_p99_ms: "< 500"
+    severity: warning
+
+  - id: INGEST-015
+    name: Negative sensor values accepted (e.g., temperature -40 degC)
+    input:
+      payload: {"value": -40.0, "unit": "degC"}
+    expected:
+      value: -40.0
+    severity: info
+
+  # ─── Stream processing ──────────────────────────────────────────────
+  - id: STREAM-001
+    name: 30-second window aggregates correctly
+    input:
+      sensor_id: "vib_a3"
+      readings: [4.0, 4.1, 4.2, 8.5, 4.0, 4.1]
+      window_seconds: 30
+    expected:
+      mean: 4.82
+      std_dev: 1.69
+      anomalies: 1
+    severity: critical
+
+  - id: STREAM-002
+    name: Window with all identical values produces no anomalies (stdDev=0)
+    input:
+      readings: [4.0, 4.0, 4.0, 4.0]
+    expected:
+      anomalies: 0
+    severity: critical
+
+  - id: STREAM-003
+    name: Empty window produces no output
+    input:
+      readings: []
+    expected:
+      output_count: 0
+    severity: warning
+
+  - id: STREAM-004
+    name: Late-arriving data within allowed lateness is included
+    input:
+      event_time: "30s ago"
+      arrival_time: "now"
+      max_lateness: "60s"
+    expected:
+      included: true
+    severity: critical
+
+  - id: STREAM-005
+    name: Late-arriving data beyond allowed lateness is dropped
+    input:
+      event_time: "120s ago"
+      arrival_time: "now"
+      max_lateness: "60s"
+    expected:
+      included: false
+      metric_dropped_messages_incremented: true
+    severity: critical
+
+  - id: STREAM-006
+    name: Checkpoint succeeds every 60s
+    input:
+      checkpoint_interval: 60
+      run_duration: 300
+    expected:
+      checkpoint_count: 5
+      checkpoint_failures: 0
+    severity: critical
+
+  - id: STREAM-007
+    name: Job restarts from last checkpoint on failure
+    input:
+      kill_taskmanager_after: 120
+      checkpoint_exists: true
+    expected:
+      job_recovers: true
+      no_data_loss: true
+    severity: critical
+
+  - id: STREAM-008
+    name: Backpressure detected and reported
+    input:
+      input_rate_per_sec: 200000
+      processing_capacity_per_sec: 100000
+    expected:
+      backpressure_metric: "> 0.5"
+      alert_raised: true
+    severity: warning
+
+  - id: STREAM-009
+    name: Exactly-once semantics across Kafka consumer-producer chain
+    input:
+      messages: 1000
+      kill_mid_stream: true
+    expected:
+      total_output_messages: 1000
+      no_duplicates: true
+    severity: critical
+
+  - id: STREAM-010
+    name: Anomaly token emission cuts bandwidth by 99.7%
+    input:
+      raw_messages: 10000
+      anomaly_rate: 0.003
+    expected:
+      anomaly_tokens_emitted: 30
+      bandwidth_reduction: 99.7
+    severity: warning
+
+  # ─── Storage: TimescaleDB ──────────────────────────────────────────
+  - id: STORAGE-001
+    name: Hypertable partitioning works by day
+    input:
+      insert_readings_across: 7
+    expected:
+      chunk_count: ">= 7"
+    severity: critical
+
+  - id: STORAGE-002
+    name: 30-day retention policy drops old data
+    input:
+      insert_data_31_days_old: true
+      run_retention_policy: true
+    expected:
+      data_dropped: true
+      chunk_count_decremented: true
+    severity: critical
+
+  - id: STORAGE-003
+    name: Continuous aggregate 1-minute rollup updates
+    input:
+      insert_60_seconds_of_data: true
+      wait_for_aggregate: 70
+    expected:
+      rollup_row_count_incremented: true
+    severity: critical
+
+  - id: STORAGE-004
+    name: Query by sensor_id + time range returns correct readings
+    input:
+      sensor_id: "vib_a3"
+      time_range: ["2026-09-01T00:00:00Z", "2026-09-01T01:00:00Z"]
+    expected:
+      row_count: "matches insert count"
+    severity: critical
+
+  - id: STORAGE-005
+    name: PostgreSQL connection pool handles 100 concurrent queries
+    input:
+      concurrent_queries: 100
+    expected:
+      no_connection_errors: true
+      p99_query_latency_ms: "< 200"
+    severity: critical
+
+  - id: STORAGE-006
+    name: TimescaleDB compression kicks in after 24h
+    input:
+      insert_old_data: true
+      data_age: 25
+    expected:
+      compressed_chunks: "> 0"
+    severity: warning
+
+  - id: STORAGE-007
+    name: Disk full alert fires at 80% usage
+    input:
+      disk_usage: 80
+    expected:
+      alert_raised: true
+      alert_severity: "warning"
+    severity: critical
+
+  - id: STORAGE-008
+    name: Disk full alert escalates to critical at 95%
+    input:
+      disk_usage: 95
+    expected:
+      alert_raised: true
+      alert_severity: "critical"
+    severity: critical
+
+  # ─── Storage: Iceberg + ClickHouse ────────────────────────────────
+  - id: STORAGE-009
+    name: Cold data archived to Iceberg S3 in Parquet format
+    input:
+      data_age: 31
+    expected:
+      s3_objects_created: true
+      parquet_schema_matches_avsc: true
+    severity: critical
+
+  - id: STORAGE-010
+    name: ClickHouse ingest from Iceberg succeeds
+    input:
+      iceberg_table: "telemetry_cold"
+      clickhouse_table: "telemetry_cold"
+    expected:
+      row_count_matches: true
+    severity: critical
+
+  - id: STORAGE-011
+    name: ClickHouse query: hourly anomaly count per sensor returns in <2s
+    input:
+      query: "SELECT sensor_id, bucket, anomaly_count FROM anomaly_counts_hourly"
+      time_range: 7
+    expected:
+      latency_p99_ms: "< 2000"
+    severity: warning
+
+  - id: STORAGE-012
+    name: ClickHouse query: top-10 most-failing assets returns in <1s
+    input:
+      query: "SELECT asset_id, count() FROM alerts GROUP BY asset_id ORDER BY count() DESC LIMIT 10"
+      data_size: "100M rows"
+    expected:
+      latency_p99_ms: "< 1000"
+    severity: warning
+
+  # ─── ML inference ──────────────────────────────────────────────────
+  - id: ML-001
+    name: TS-FM inference on normal vibration returns low anomaly score
+    input:
+      window: [4.0, 4.1, 4.0, 4.2, 4.0, 4.1, 4.0, 4.1]
+      sensor_kind: "vibration"
+    expected:
+      anomaly_score: "< 0.3"
+    severity: critical
+
+  - id: ML-002
+    name: TS-FM inference on anomalous vibration returns high anomaly score
+    input:
+      window: [4.0, 4.1, 4.0, 4.2, 4.0, 4.1, 11.5, 11.8]
+      sensor_kind: "vibration"
+    expected:
+      anomaly_score: "> 0.85"
+    severity: critical
+
+  - id: ML-003
+    name: Inference p99 latency under 100ms on Hailo-8
+    input:
+      batch_size: 32
+      device: "hailo-8"
+    expected:
+      latency_p99_ms: "< 100"
+    severity: critical
+
+  - id: ML-004
+    name: Model loads successfully from S3 path
+    input:
+      model_path: "s3://aisensoredgecomp-models/ts-fm-v1.onnx"
+    expected:
+      load_success: true
+      load_time_seconds: "< 30"
+    severity: critical
+
+  - id: ML-005
+    name: Model handles window with all zeros (degenerate input)
+    input:
+      window: [0, 0, 0, 0, 0, 0, 0, 0]
+    expected:
+      no_crash: true
+      confidence: "> 0.0"
+    severity: warning
+
+  - id: ML-006
+    name: Model handles NaN input gracefully
+    input:
+      window: [4.0, 4.1, NaN, 4.2, 4.0]
+    expected:
+      no_crash: true
+      returns_confidence_zero: true
+    severity: critical
+
+  - id: ML-007
+    name: Model handles very long window (10k samples) without OOM
+    input:
+      window_size: 10000
+    expected:
+      no_oom: true
+    severity: warning
+
+  - id: ML-008
+    name: RUL prediction for healthy asset > 1000 hours
+    input:
+      asset_id: "compressor_a"
+      recent_readings: "normal pattern for 7 days"
+    expected:
+      rul_hours: "> 1000"
+      confidence: "> 0.7"
+    severity: warning
+
+  - id: ML-009
+    name: RUL prediction for failing asset < 100 hours
+    input:
+      asset_id: "compressor_b"
+      recent_readings: "degrading pattern for 7 days"
+    expected:
+      rul_hours: "< 100"
+      confidence: "> 0.7"
+    severity: critical
+
+  - id: ML-010
+    name: Model drift detector triggers on distribution shift
+    input:
+      feature_distribution_shift: "PSI > 0.2"
+    expected:
+      drift_alert_raised: true
+      retraining_triggered: true
+    severity: critical
+
+  # ─── API ──────────────────────────────────────────────────────────
+  - id: API-001
+    name: GET /health returns 200 with service name
+    input:
+      method: GET
+      path: /health
+    expected:
+      status: 200
+      body_contains: "api"
+    severity: critical
+
+  - id: API-002
+    name: GET /api/v1/sensors returns sensor list
+    input:
+      method: GET
+      path: /api/v1/sensors
+    expected:
+      status: 200
+      body_has_sensors_array: true
+    severity: critical
+
+  - id: API-003
+    name: GET /api/v1/sensors/{id}/readings returns paginated readings
+    input:
+      path: /api/v1/sensors/vib_a3/readings?limit=100
+    expected:
+      status: 200
+      max_readings: 100
+    severity: critical
+
+  - id: API-004
+    name: Rate limit kicks in after 1000 req/min per IP
+    input:
+      requests: 1001
+      time_window: 60
+    expected:
+      status_429_returned: true
+    severity: warning
+
+  - id: API-005
+    name: CORS allows configured origin
+    input:
+      origin: "http://localhost:3000"
+    expected:
+      access_control_allow_origin: "http://localhost:3000"
+    severity: warning
+
+  - id: API-006
+    name: CORS blocks unconfigured origin
+    input:
+      origin: "http://evil.example.com"
+    expected:
+      no_cors_headers: true
+    severity: warning
+
+  - id: API-007
+    name: JWT auth required for write endpoints
+    input:
+      method: POST
+      path: /api/v1/assets
+      no_jwt: true
+    expected:
+      status: 401
+    severity: critical
+
+  - id: API-008
+    name: Invalid JWT rejected
+    input:
+      jwt: "invalid.signature.here"
+    expected:
+      status: 401
+    severity: critical
+
+  - id: API-009
+    name: Expired JWT rejected
+    input:
+      jwt_expired: true
+    expected:
+      status: 401
+      error_contains: "expired"
+    severity: critical
+
+  - id: API-010
+    name: LLM search endpoint returns grounded answer with citations
+    input:
+      query: "What is your TAM?"
+    expected:
+      answer_contains: "547"
+      has_citations: true
+    severity: warning
+
+  # ─── Security ────────────────────────────────────────────────────
+  - id: SEC-001
+    name: TLS 1.3 enforced for all external connections
+    input:
+      attempt_tls_1_0: true
+    expected:
+      connection_rejected: true
+    severity: critical
+
+  - id: SEC-002
+    name: API key required for admin endpoints
+    input:
+      method: POST
+      path: /api/v1/admin/reload
+      no_api_key: true
+    expected:
+      status: 403
+    severity: critical
+
+  - id: SEC-003
+    name: SQL injection attempt rejected
+    input:
+      sensor_id: "'; DROP TABLE measurements; --"
+    expected:
+      no_table_dropped: true
+      status: 400
+    severity: critical
+
+  - id: SEC-004
+    name: XSS payload in alert title escaped
+    input:
+      title: "<script>alert(1)</script>"
+    expected:
+      stored_escaped: true
+      no_script_executed: true
+    severity: critical
+
+  - id: SEC-005
+    name: Path traversal attempt rejected
+    input:
+      path: "/api/v1/files/../../../etc/passwd"
+    expected:
+      status: 404
+      no_file_access: true
+    severity: critical
+
+  - id: SEC-006
+    name: Customer data isolation enforced (Customer A can't read Customer B)
+    input:
+      customer_a_jwt: true
+      query_customer_b_sensor: true
+    expected:
+      status: 403
+    severity: critical
+
+  - id: SEC-007
+    name: Encryption at rest verified (s3 objects encrypted)
+    input:
+      check_s3_encryption: true
+    expected:
+      s3_encryption_algorithm: "AES256"
+    severity: critical
+
+  - id: SEC-008
+    name: Audit log records every admin action
+    input:
+      admin_action: "rotate_keys"
+    expected:
+      audit_log_entry_created: true
+      audit_log_contains_user_id: true
+    severity: critical
+
+  - id: SEC-009
+    name: Secret leak detector fails on plaintext credentials in code
+    input:
+      file_contents: "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"
+    expected:
+      pre_commit_hook_fails: true
+    severity: critical
+
+  - id: SEC-010
+    name: Rate limit on login endpoint prevents brute force
+    input:
+      failed_attempts: 100
+      time_window: 60
+    expected:
+      account_locked: true
+    severity: critical
+
+  # ─── Edge cases: weird data ────────────────────────────────────────
+  - id: EDGE-001
+    name: Sensor reading with timestamp in the future accepted with warning
+    input:
+      timestamp_ns: "3000-01-01"
+    expected:
+      ingested: true
+      warning_logged: true
+    severity: info
+
+  - id: EDGE-002
+    name: Sensor reading with timestamp before 2020 rejected
+    input:
+      timestamp_ns: "2019-01-01"
+    expected:
+      rejected: true
+    severity: warning
+
+  - id: EDGE-003
+    name: Reading with extreme value (1e308) accepted, not crashed
+    input:
+      value: 1e308
+    expected:
+      no_crash: true
+    severity: warning
+
+  - id: EDGE-004
+    name: Reading with negative timestamp rejected
+    input:
+      timestamp_ns: -1
+    expected:
+      rejected: true
+    severity: warning
+
+  - id: EDGE-005
+    name: Reading with calibration_confidence > 1.0 clamped to 1.0
+    input:
+      calibration_confidence: 1.5
+    expected:
+      stored_value: 1.0
+    severity: info
+
+  - id: EDGE-006
+    name: Reading with negative confidence rejected
+    input:
+      calibration_confidence: -0.5
+    expected:
+      rejected: true
+    severity: warning
+
+  - id: EDGE-007
+    name: UTF-8 multibyte characters in sensor metadata handled
+    input:
+      sensor_name: "压缩机A"
+    expected:
+      no_encoding_error: true
+    severity: info
+
+  - id: EDGE-008
+    name: Empty location object accepted
+    input:
+      location: {}
+    expected:
+      ingested: true
+    severity: info
+
+  - id: EDGE-009
+    name: Location with invalid lat/lon rejected
+    input:
+      location: {"lat": 95.0, "lon": -181.0}
+    expected:
+      rejected: true
+      error_contains: "lat must be in [-90, 90]"
+    severity: warning
+
+  - id: EDGE-010
+    name: Very long sensor_id (1000 chars) handled
+    input:
+      sensor_id_length: 1000
+    expected:
+      ingested: true
+    severity: info
+
+  # ─── Operational: failure scenarios ───────────────────────────────
+  - id: OPS-001
+    name: Kafka broker failure triggers consumer rebalance
+    input:
+      kill_kafka_broker: 1
+    expected:
+      consumer_rebalances: true
+      no_data_loss: true
+    severity: critical
+
+  - id: OPS-002
+    name: Network partition between ingest and kafka handled
+    input:
+      network_partition: 30
+    expected:
+      ingest_retries: true
+      no_data_loss: true
+    severity: critical
+
+  - id: OPS-003
+    name: Pod restarts 3x in 5 minutes triggers Kubernetes alert
+    input:
+      pod_restarts: 3
+    expected:
+      k8s_alert_raised: true
+    severity: critical
+
+  - id: OPS-004
+    name: OOM kill of ingest pod triggers auto-restart
+    input:
+      trigger_oom: true
+    expected:
+      pod_restarts: true
+      no_data_loss: true
+    severity: critical
+
+  - id: OPS-005
+    name: Disk pressure on TimescaleDB triggers eviction
+    input:
+      disk_pressure: true
+    expected:
+      pod_evicted: true
+      rescheduled: true
+    severity: critical
+
+  - id: OPS-006
+    name: Helm rollback to previous version succeeds
+    input:
+      helm_rollback: true
+    expected:
+      rollback_success: true
+    severity: warning
+
+  - id: OPS-007
+    name: Blue-green deploy: new version starts before old is stopped
+    input:
+      deployment_strategy: "blue-green"
+    expected:
+      zero_downtime: true
+    severity: critical
+
+  - id: OPS-008
+    name: Canary deploy: 10% traffic to new version
+    input:
+      deployment_strategy: "canary"
+      canary_percent: 10
+    expected:
+      canary_healthy: true
+    severity: warning
+
+  - id: OPS-009
+    name: Database migration forward-only (no rollback)
+    input:
+      migration: "add_column"
+    expected:
+      migration_applied: true
+    severity: warning
+
+  - id: OPS-010
+    name: Backup restores within RTO (30 min)
+    input:
+      restore_from_backup: true
+    expected:
+      restore_time_seconds: "< 1800"
+    severity: critical
+
+  # ─── Compliance ───────────────────────────────────────────────────
+  - id: COMP-001
+    name: GDPR: data subject deletion request processed within 30 days
+    input:
+      subject_id: "user-123"
+    expected:
+      deleted_within_days: 30
+      audit_log_entry: true
+    severity: critical
+
+  - id: COMP-002
+    name: GDPR: data export request fulfilled within 30 days
+    input:
+      subject_id: "user-123"
+    expected:
+      export_within_days: 30
+    severity: critical
+
+  - id: COMP-003
+    name: EU data residency: EU customer data stays in EU region
+    input:
+      customer_region: "EU"
+    expected:
+      storage_region: "eu-central-1"
+    severity: critical
+
+  - id: COMP-004
+    name: SOC 2: all admin actions logged with user, timestamp, action
+    input:
+      admin_action: true
+    expected:
+      audit_log_complete: true
+    severity: critical
+
+  - id: COMP-005
+    name: IEC 62443: air-gapped deployment doesn't require internet
+    input:
+      deployment_mode: "air-gapped"
+    expected:
+      no_external_calls: true
+    severity: critical
+
+  # ─── Performance ──────────────────────────────────────────────────
+  - id: PERF-001
+    name: 1M telemetry messages ingested per second sustained
+    input:
+      rate: 1000000
+      duration: 300
+    expected:
+      no_backpressure: true
+      no_data_loss: true
+    severity: critical
+
+  - id: PERF-002
+    name: API p99 latency under 100ms with 1000 concurrent users
+    input:
+      concurrent_users: 1000
+    expected:
+      p99_ms: "< 100"
+    severity: critical
+
+  - id: PERF-003
+    name: 1B rows in TimescaleDB query under 2s
+    input:
+      row_count: 1000000000
+      query: "SELECT count(*) FROM measurements WHERE sensor_id = 'vib_a3'"
+    expected:
+      latency_p99_ms: "< 2000"
+    severity: warning
+
+  - id: PERF-004
+    name: 10B rows in ClickHouse query under 5s
+    input:
+      row_count: 10000000000
+      query: "SELECT sensor_id, count() FROM telemetry_cold GROUP BY sensor_id"
+    expected:
+      latency_p99_ms: "< 5000"
+    severity: warning
+
+  - id: PERF-005
+    name: ML model cold-start under 30s
+    input:
+      model_size_mb: 1400
+    expected:
+      cold_start_seconds: "< 30"
+    severity: warning
+
+  - id: PERF-006
+    name: Edge cluster runs for 72h on WAN loss with no degradation
+    input:
+      disconnect_wan: true
+      duration_hours: 72
+    expected:
+      anomalies_still_detected: true
+      alerts_still_raised: true
+      local_buffer_full: false
+    severity: critical
+
+  - id: PERF-007
+    name: Edge cluster resyncs to cloud after WAN restoration
+    input:
+      restore_wan_after_hours: 72
+    expected:
+      resync_completes: true
+      no_duplicate_data: true
+    severity: critical
+
+  - id: PERF-008
+    name: Inference batch size 32 fits in Hailo-8 memory (2.5W)
+    input:
+      batch_size: 32
+      device: "hailo-8"
+    expected:
+      no_oom: true
+      inference_latency_p99_ms: "< 100"
+    severity: critical
+
+  # ─── Multi-tenancy ─────────────────────────────────────────────────
+  - id: MTEN-001
+    name: Tenant A query cannot see Tenant B's data
+    input:
+      tenant_a_jwt: true
+      query_tenant_b_sensor: true
+    expected:
+      status: 403
+    severity: critical
+
+  - id: MTEN-002
+    name: Per-tenant encryption keys isolate data
+    input:
+      tenant_a_key: "key-A"
+      tenant_b_key: "key-B"
+    expected:
+      tenant_a_cannot_decrypt_tenant_b: true
+    severity: critical
+
+  - id: MTEN-003
+    name: Tenant resource quotas enforced
+    input:
+      tenant: "free-tier"
+      request_count: 10000
+    expected:
+      rate_limited: true
+    severity: warning
+
+  - id: MTEN-004
+    name: Cross-tenant federated learning uses gradients only
+    input:
+      federated_round: 1
+    expected:
+      raw_data_never_sent: true
+    severity: critical
+
+  # ─── Schemas: Avro/Protobuf ────────────────────────────────────────
+  - id: SCH-001
+    name: Avro schema validates against telemetry.avsc
+    input:
+      message: {"measurement_id": "meas_001", "sensor_id": "vib_a3", "sensor_kind": "vibration", "physical_quantity": "bearing_rms", "unit": "mm/s_RMS", "value": 4.5, "uncertainty": 0.0, "timestamp_ns": 1788561600000000000, "sample_rate_hz": 1.0, "lineage": {"ingest_protocol": "MQTT", "source_node_id": "x", "ingest_ts": 1788561600000000000, "calibration_age_days": 0}, "calibration_confidence": 1.0}
+    expected:
+      valid: true
+    severity: critical
+
+  - id: SCH-002
+    name: Avro schema rejects invalid sensor_kind
+    input:
+      message: {"sensor_kind": "INVALID_KIND"}
+    expected:
+      valid: false
+    severity: critical
+
+  - id: SCH-003
+    name: Schema Registry backward compatibility enforced
+    input:
+      add_required_field: true
+    expected:
+      schema_rejected: true
+    severity: critical
+
+  - id: SCH-004
+    name: Protobuf schema compiles to Python
+    input:
+      proto_file: "schemas/proto/telemetry.proto"
+    expected:
+      generated_files: ["telemetry_pb2.py"]
+    severity: warning
+
+  - id: SCH-005
+    name: Avro schema evolution: add optional field works
+    input:
+      add_optional_field: true
+    expected:
+      schema_accepted: true
+      old_consumers_can_read: true
+    severity: warning
+
+  # ─── Sectors: oil & gas ────────────────────────────────────────────
+  - id: SECTOR-OG-001
+    name: Oil well pump vibration anomaly detected within 5s
+    input:
+      sector: "oil-gas"
+      sensor: "pump_jack_rig_42_vibration"
+      anomaly: true
+    expected:
+      alert_within_seconds: 5
+    severity: critical
+
+  - id: SECTOR-OG-002
+    name: Pipeline pressure drop triggers leak detection
+    input:
+      sector: "oil-gas"
+      sensor: "pipeline_kx12_pressure_inlet"
+      sensor: "pipeline_kx12_pressure_outlet"
+      pressure_drop: "20%"
+    expected:
+      leak_alert_raised: true
+      severity: "critical"
+    severity: critical
+
+  # ─── Sectors: chemical ────────────────────────────────────────────
+  - id: SECTOR-CP-001
+    name: Reactor temperature rise triggers runaway detection
+    input:
+      sector: "chemical-plant"
+      reactor_temp_rate_per_min: 5.0
+      threshold_rate_per_min: 2.0
+    expected:
+      runaway_alert_raised: true
+    severity: critical
+
+  - id: SECTOR-CP-002
+    name: Gas leak detected by multi-pixel sensor array
+    input:
+      sector: "chemical-plant"
+      sensor: "reactor_a_gas_sensor"
+      gas_concentration: "150 ppm"
+      threshold: "100 ppm"
+    expected:
+      leak_alert_raised: true
+    severity: critical
+
+  # ─── Sectors: hospital ICU ─────────────────────────────────────────
+  - id: SECTOR-ICU-001
+    name: Patient heart rate anomaly detected within 2s
+    input:
+      sector: "hospital-icu"
+      patient_id: "P-1234"
+      hr_spike: true
+    expected:
+      alert_within_seconds: 2
+    severity: critical
+
+  - id: SECTOR-ICU-002
+    name: Ventilator disconnect triggers immediate alert
+    input:
+      sector: "hospital-icu"
+      sensor: "ventilator_P-1234_flow"
+      flow: 0
+    expected:
+      alert_within_seconds: 1
+      severity: "emergency"
+    severity: critical
+
+  - id: SECTOR-ICU-003
+    name: Patient data isolated per HIPAA
+    input:
+      sector: "hospital-icu"
+      cross_patient_query: true
+    expected:
+      blocked: true
+    severity: critical
+
+  # ─── Sectors: autonomous vehicles ─────────────────────────────────
+  - id: SECTOR-AV-001
+    name: Lidar anomaly (sudden obstacle) detected within 100ms
+    input:
+      sector: "autonomous-vehicles"
+      lidar_reading: "obstacle 5m ahead"
+    expected:
+      alert_within_ms: 100
+    severity: critical
+
+  - id: SECTOR-AV-002
+    name: Tire pressure drop triggers fleet alert
+    input:
+      sector: "autonomous-vehicles"
+      vehicle_id: "V-789"
+      tire_pressure_drop: "20%"
+    expected:
+      fleet_alert_raised: true
+    severity: critical
+
+  # ─── Sectors: smart grid ──────────────────────────────────────────
+  - id: SECTOR-GRID-001
+    name: Substation phasor anomaly triggers protective action
+    input:
+      sector: "smart-grid"
+      substation: "SUB-NY-42"
+      phasor_deviation: "5 sigma"
+    expected:
+      protective_relay_triggered: true
+    severity: critical
+
+  - id: SECTOR-GRID-002
+    name: Demand-response event coordinates 10k EVs
+    input:
+      sector: "smart-grid"
+      ev_count: 10000
+      demand_shed_mw: 50
+    expected:
+      ev_participation: "> 80%"
+    severity: warning
+
+  # ─── Sectors: mining ──────────────────────────────────────────────
+  - id: SECTOR-MINE-001
+    name: Underground air quality (methane) triggers evacuation alert
+    input:
+      sector: "mining"
+      sensor: "shaft_a_methane_sensor"
+      methane_ppm: 15000
+      threshold_ppm: 10000
+    expected:
+      evacuation_alert: true
+      severity: "emergency"
+    severity: critical
+
+  - id: SECTOR-MINE-002
+    name: Haul truck vibration anomaly triggers maintenance flag
+    input:
+      sector: "mining"
+      truck_id: "TRK-789"
+      vibration_anomaly: true
+    expected:
+      maintenance_alert_raised: true
+    severity: warning
+
+  # ─── Sectors: water treatment ─────────────────────────────────────
+  - id: SECTOR-WATER-001
+    name: Chlorine residual drop triggers dosing alert
+    input:
+      sector: "water-treatment"
+      sensor: "cl2_residual_post_filter"
+      value: 0.5
+      threshold: 1.0
+    expected:
+      dosing_alert_raised: true
+    severity: critical
+
+  - id: SECTOR-WATER-002
+    name: Turbidity spike triggers intake shutdown
+    input:
+      sector: "water-treatment"
+      sensor: "turbidity_raw_water"
+      value_ntu: 50
+      threshold_ntu: 10
+    expected:
+      intake_shutdown_triggered: true
+    severity: critical
+
+  # ─── Federated learning ───────────────────────────────────────────
+  - id: FL-001
+    name: Federated round aggregates 10 customer gradients
+    input:
+      customer_count: 10
+    expected:
+      global_model_updated: true
+    severity: warning
+
+  - id: FL-002
+    name: Differential privacy noise added to gradients
+    input:
+      epsilon: 1.0
+    expected:
+      noise_added: true
+      privacy_budget_consumed_logged: true
+    severity: critical
+
+  - id: FL-003
+    name: Customer can opt out of federated learning
+    input:
+      customer_id: "C-42"
+      opt_out: true
+    expected:
+      gradient_not_sent: true
+    severity: critical
+
+  - id: FL-004
+    name: Secure aggregation in SGX — platform operator can't see gradients
+    input:
+      aggregation_in_sgx: true
+    expected:
+      operator_cannot_decrypt: true
+    severity: critical
+
+  # ─── Causal inference ─────────────────────────────────────────────
+  - id: CAUSAL-001
+    name: PC algorithm builds correct skeleton from synthetic data
+    input:
+      synthetic_graph: "known_dag"
+    expected:
+      recovered_edges: "matches ground truth"
+    severity: warning
+
+  - id: CAUSAL-002
+    name: do-calculus answers intervention query correctly
+    input:
+      intervention: "set bearing_lubrication = good"
+    expected:
+      p_failure_reduced: "by 80%"
+    severity: warning
+
+  - id: CAUSAL-003
+    name: Causal validity backtest agrees with actual interventions
+    input:
+      historical_interventions: 100
+    expected:
+      agreement_rate: "> 0.8"
+    severity: warning
+
+  # ─── Total: 105 scenarios ───────────────────────────────────────────
+  # Counts: INGEST 15, STREAM 10, STORAGE 12, ML 10, API 10, SEC 10,
+  #         EDGE 10, OPS 10, COMP 5, PERF 8, MTEN 4, SCH 5,
+  #         SECTOR 14 (OG 2 + CP 2 + ICU 3 + AV 2 + GRID 2 + MINE 2 + WATER 2),
+  #         FL 4, CAUSAL 3 = 108 total
