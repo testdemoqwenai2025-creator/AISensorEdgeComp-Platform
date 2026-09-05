@@ -42,7 +42,9 @@ target/
 data/
 *.db
 *.sqlite
+# Note: *.parquet excluded below, but allow our published dataset
 *.parquet
+!datasets/*.parquet
 
 # Models (never commit large model files)
 *.onnx
