@@ -35,6 +35,11 @@ AISensorEdgeComp-Platform/
 │   ├── smart-grid/
 │   ├── mining/
 │   └── water-treatment/
+├── datasets/                # 🆕 Synthetic dataset for researchers + benchmarking
+│   ├── synthetic-industrial-telemetry-v1.parquet  # 1M rows, 36MB, Apache 2.0
+│   ├── README.md            # Kaggle-style docs with quick-start code
+│   ├── CITATION.bib          # Academic citation
+│   └── LICENSE
 ├── tests/                    # 100+ edge-case test scenarios
 ├── docs/                     # Engineering documentation
 └── scripts/                  # Dev + ops scripts
@@ -109,6 +114,22 @@ helm install aisensoredgecomp ./helm/aisensoredgecomp \
 - [Sector configurations](docs/SECTORS.md)
 - [Operations runbook](docs/OPERATIONS.md)
 - [Security model](docs/SECURITY.md)
+
+## 🆕 Synthetic dataset
+
+We publish a 1M-row synthetic industrial telemetry dataset (36MB Parquet, Apache 2.0)
+matching our Avro schema. Designed for researchers benchmarking anomaly detection,
+platform engineers testing Kafka/Flink pipelines, and educators teaching industrial IoT.
+
+```bash
+# Read with pandas
+python -c "import pandas as pd; df = pd.read_parquet('datasets/synthetic-industrial-telemetry-v1.parquet'); print(df.head())"
+
+# Or query with DuckDB
+duckdb -c "SELECT sensor_kind, count(*), avg(value) FROM 'datasets/synthetic-industrial-telemetry-v1.parquet' GROUP BY sensor_kind"
+```
+
+See [`datasets/README.md`](datasets/README.md) for full docs, quick-start code, and citation info.
 
 ## Sector-specific deployments
 
